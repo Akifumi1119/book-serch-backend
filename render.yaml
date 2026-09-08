@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: book-serch-backend
+    runtime: docker
+    plan: free
+    healthCheckPath: /actuator/health
+    envVars:
+      - key: SPRING_PROFILES_ACTIVE
+        value: prod
