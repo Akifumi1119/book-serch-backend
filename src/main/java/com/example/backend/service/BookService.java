@@ -1,6 +1,7 @@
 package com.example.backend.service;
 
 import com.example.backend.dto.BookResponse;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 import org.w3c.dom.Document;
@@ -11,6 +12,7 @@ import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.Optional;
 
 @Service
@@ -21,18 +23,29 @@ public class BookService {
     private final RestClient restClient;
 
     public BookService() {
-        this.restClient = RestClient.builder().baseUrl(NDL_API_BASE).build();
+        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(Duration.ofSeconds(5));
+        factory.setReadTimeout(Duration.ofSeconds(10));
+
+        this.restClient = RestClient.builder()
+                .baseUrl(NDL_API_BASE)
+                .requestFactory(factory)
+                .build();
     }
 
     public Optional<BookResponse> findByIsbn(String isbn) {
-        String xml = restClient.get()
-                .uri(uri -> uri.queryParam("isbn", isbn).build())
-                .retrieve()
-                .body(String.class);
+        try {
+            String xml = restClient.get()
+                    .uri(uri -> uri.queryParam("isbn", isbn).build())
+                    .retrieve()
+                    .body(String.class);
 
-        if (xml == null || xml.isBlank()) return Optional.empty();
+            if (xml == null || xml.isBlank()) return Optional.empty();
 
-        return parseFirstItem(xml, isbn);
+            return parseFirstItem(xml, isbn);
+        } catch (Exception e) {
+            return Optional.empty();
+        }
     }
 
     private Optional<BookResponse> parseFirstItem(String xml, String isbn) {
@@ -62,12 +75,10 @@ public class BookService {
     }
 
     private String getLocalText(Element element, String localName) {
-        // 名前空間あり（dc:creator 等）と なし（title, link）の両方に対応
         NodeList nodes = element.getElementsByTagNameNS("*", localName);
         if (nodes.getLength() > 0) {
             return nodes.item(0).getTextContent().trim();
         }
-        // 名前空間なしにフォールバック
         nodes = element.getElementsByTagName(localName);
         if (nodes.getLength() > 0) {
             return nodes.item(0).getTextContent().trim();
