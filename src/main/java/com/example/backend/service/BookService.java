@@ -13,7 +13,10 @@ import javax.xml.parsers.DocumentBuilderFactory;
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.Arrays;
+import java.util.List;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 @Service
 public class BookService {
@@ -64,7 +67,7 @@ public class BookService {
             return Optional.of(BookResponse.builder()
                     .isbn(isbn)
                     .title(getLocalText(item, "title"))
-                    .author(getLocalText(item, "author"))
+                    .author(buildAuthor(item))
                     .publisher(getLocalText(item, "publisher"))
                     .publishedDate(getLocalText(item, "date"))
                     .link(getLocalText(item, "link"))
@@ -72,6 +75,18 @@ public class BookService {
         } catch (Exception e) {
             return Optional.empty();
         }
+    }
+
+    private String buildAuthor(Element item) {
+        String raw = getLocalText(item, "author");
+        if (raw.isEmpty()) return "";
+
+        List<String> withRole = Arrays.stream(raw.split(","))
+                .map(String::trim)
+                .filter(s -> s.matches(".*(著|訳|編|監修|監訳).*"))
+                .collect(Collectors.toList());
+
+        return withRole.isEmpty() ? raw : String.join("・", withRole);
     }
 
     private String getLocalText(Element element, String localName) {
