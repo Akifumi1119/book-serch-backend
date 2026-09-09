@@ -103,6 +103,7 @@ public class BookService {
             List<BookResponse> results = new java.util.ArrayList<>();
             for (int i = 0; i < items.getLength(); i++) {
                 Element item = (Element) items.item(i);
+                if (!isBook(item)) continue;
                 results.add(BookResponse.builder()
                         .isbn(extractIsbn(item))
                         .title(getLocalText(item, "title"))
@@ -132,15 +133,39 @@ public class BookService {
         return 0;
     }
 
-    private static final java.util.regex.Pattern ISBN_PATTERN =
-            java.util.regex.Pattern.compile("97[89]\\d{10}");
-
     private String extractIsbn(Element item) {
         NodeList identifiers = item.getElementsByTagNameNS("*", "identifier");
+        String isbn10 = "";
+        String isbn13 = "";
         for (int i = 0; i < identifiers.getLength(); i++) {
-            String text = identifiers.item(i).getTextContent().trim().replace("-", "");
-            java.util.regex.Matcher m = ISBN_PATTERN.matcher(text);
-            if (m.find()) return m.group();
+            org.w3c.dom.Node node = identifiers.item(i);
+            String type = getTypeAttribute(node);
+            if (!type.contains("ISBN")) continue;
+            String digits = node.getTextContent().trim().replaceAll("[^0-9X]", "");
+            if (type.contains("ISBN13") || digits.matches("97[89]\\d{10}")) {
+                if (isbn13.isEmpty()) isbn13 = digits;
+            } else if (digits.matches("\\d{9}[0-9X]")) {
+                if (isbn10.isEmpty()) isbn10 = digits;
+            }
+        }
+        return !isbn13.isEmpty() ? isbn13 : isbn10;
+    }
+
+    private boolean isBook(Element item) {
+        NodeList categories = item.getElementsByTagName("category");
+        for (int i = 0; i < categories.getLength(); i++) {
+            if ("図書".equals(categories.item(i).getTextContent().trim())) return true;
+        }
+        return false;
+    }
+
+    private String getTypeAttribute(org.w3c.dom.Node node) {
+        org.w3c.dom.NamedNodeMap attrs = node.getAttributes();
+        if (attrs == null) return "";
+        for (int i = 0; i < attrs.getLength(); i++) {
+            if ("type".equals(attrs.item(i).getLocalName())) {
+                return attrs.item(i).getNodeValue();
+            }
         }
         return "";
     }
