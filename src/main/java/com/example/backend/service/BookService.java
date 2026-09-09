@@ -53,9 +53,10 @@ public class BookService {
     }
 
     public BookSearchResponse searchBooks(String title, String creator, String publisher, String keyword, int page, int size) {
+        int idx = page * size + 1;
+        String xml;
         try {
-            int idx = page * size + 1;
-            String xml = restClient.get()
+            xml = restClient.get()
                     .uri(uri -> {
                         org.springframework.web.util.UriBuilder b = uri;
                         if (title != null && !title.isBlank())         b = b.queryParam("title", title);
@@ -66,17 +67,29 @@ public class BookService {
                     })
                     .retrieve()
                     .body(String.class);
-
-            if (xml == null || xml.isBlank()) return emptyResult(page, size);
-
-            return BookSearchResponse.builder()
-                    .items(parseItems(xml))
-                    .totalResults(parseTotalResults(xml))
-                    .page(page)
-                    .size(size)
-                    .build();
         } catch (Exception e) {
-            return emptyResult(page, size);
+            throw new NdlApiException("NDL APIへの接続に失敗しました", e);
+        }
+
+        if (xml == null || xml.isBlank()) return emptyResult(page, size);
+
+        List<BookResponse> items = parseItems(xml);
+        int ndlTotal = parseTotalResults(xml);
+        // isBook フィルタで除外された分を totalResults から差し引く
+        int filtered = countItems(xml) - items.size();
+        int adjustedTotal = Math.max(0, ndlTotal - filtered);
+
+        return BookSearchResponse.builder()
+                .items(items)
+                .totalResults(adjustedTotal)
+                .page(page)
+                .size(size)
+                .build();
+    }
+
+    public static class NdlApiException extends RuntimeException {
+        public NdlApiException(String message, Throwable cause) {
+            super(message, cause);
         }
     }
 
@@ -131,6 +144,18 @@ public class BookService {
             }
         } catch (Exception ignored) {}
         return 0;
+    }
+
+    private int countItems(String xml) {
+        try {
+            DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
+            factory.setNamespaceAware(true);
+            Document doc = factory.newDocumentBuilder()
+                    .parse(new ByteArrayInputStream(xml.getBytes(StandardCharsets.UTF_8)));
+            return doc.getElementsByTagName("item").getLength();
+        } catch (Exception ignored) {
+            return 0;
+        }
     }
 
     private String extractIsbn(Element item) {

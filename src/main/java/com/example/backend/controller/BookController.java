@@ -3,6 +3,7 @@ package com.example.backend.controller;
 import com.example.backend.dto.BookResponse;
 import com.example.backend.dto.BookSearchResponse;
 import com.example.backend.service.BookService;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -41,8 +42,14 @@ public class BookController {
         }
 
         int clampedSize = Math.min(Math.max(size, 1), 100);
-        BookSearchResponse result = bookService.searchBooks(title, creator, publisher, keyword, page, clampedSize);
-        return result.totalResults() == 0 ? ResponseEntity.notFound().build() : ResponseEntity.ok(result);
+        try {
+            BookSearchResponse result = bookService.searchBooks(title, creator, publisher, keyword, page, clampedSize);
+            return result.totalResults() == 0
+                    ? ResponseEntity.notFound().build()
+                    : ResponseEntity.ok(result);
+        } catch (BookService.NdlApiException e) {
+            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).build();
+        }
     }
 
     private boolean allBlank(String... values) {
