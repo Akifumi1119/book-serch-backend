@@ -3,6 +3,8 @@ package com.example.backend.service;
 import com.example.backend.dto.BookResponse;
 import com.example.backend.dto.BookSearchResponse;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 import org.w3c.dom.Document;
@@ -25,16 +27,18 @@ import java.util.stream.Collectors;
 @Service
 public class BookService {
 
+    private static final Logger log = LoggerFactory.getLogger(BookService.class);
+
     /** NDL OpenSearch API のベースURL */
     private static final String NDL_API_BASE = "https://ndlsearch.ndl.go.jp/api/opensearch";
 
     private final RestClient restClient;
 
     public BookService() {
-        // タイムアウトを設定してハングを防ぐ（接続5秒、読み取り10秒）
+        // Renderサーバーから国内NDL APIへの遅延を考慮して長めに設定（接続15秒、読み取り30秒）
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
-        factory.setConnectTimeout(Duration.ofSeconds(5));
-        factory.setReadTimeout(Duration.ofSeconds(10));
+        factory.setConnectTimeout(Duration.ofSeconds(15));
+        factory.setReadTimeout(Duration.ofSeconds(30));
 
         this.restClient = RestClient.builder()
                 .baseUrl(NDL_API_BASE)
@@ -90,6 +94,7 @@ public class BookService {
                     .retrieve()
                     .body(String.class);
         } catch (Exception e) {
+            log.error("NDL API呼び出し失敗: {}", e.getMessage(), e);
             throw new NdlApiException("NDL APIへの接続に失敗しました", e);
         }
 
