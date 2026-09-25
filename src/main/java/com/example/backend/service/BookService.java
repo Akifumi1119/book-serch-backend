@@ -17,7 +17,6 @@ import java.time.Duration;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
-import java.util.stream.Collectors;
 
 /**
  * NDL API は Atom/RSS 形式の XML を返すため、DOM パーサーで各要素を抽出する
@@ -25,8 +24,13 @@ import java.util.stream.Collectors;
 @Service
 public class BookService {
 
-    /** NDL OpenSearch API のベースURL */
     private static final String NDL_API_BASE = "https://ndlsearch.ndl.go.jp/api/opensearch";
+
+    private static final DocumentBuilderFactory DOC_BUILDER_FACTORY;
+    static {
+        DOC_BUILDER_FACTORY = DocumentBuilderFactory.newInstance();
+        DOC_BUILDER_FACTORY.setNamespaceAware(true);
+    }
 
     private final RestClient restClient;
 
@@ -56,8 +60,7 @@ public class BookService {
 
             if (xml == null || xml.isBlank()) return Optional.empty();
 
-            // XMLを解析して書籍リストに変換し、先頭要素を返す
-            return parseItems(xml).stream().findFirst();
+            return parseItems(parseDocument(xml)).stream().findFirst();
         } catch (Exception e) {
             return Optional.empty();
         }
@@ -95,12 +98,19 @@ public class BookService {
 
         if (xml == null || xml.isBlank()) return emptyResult(page, size);
 
-        List<BookResponse> items = parseItems(xml);
-        int ndlTotal = parseTotalResults(xml);
+        Document doc;
+        try {
+            doc = parseDocument(xml);
+        } catch (Exception e) {
+            return emptyResult(page, size);
+        }
+
+        List<BookResponse> items = parseItems(doc);
+        int ndlTotal = parseTotalResults(doc);
 
         // NDL APIが返す totalResults には「図書」以外の資料種別も含まれる。
         // 当ページでフィルタにより除外された件数を差し引いて件数を補正する。
-        int filtered = countItems(xml) - items.size();
+        int filtered = countItems(doc) - items.size();
         int adjustedTotal = Math.max(0, ndlTotal - filtered);
 
         return BookSearchResponse.builder()
@@ -128,18 +138,18 @@ public class BookService {
                 .build();
     }
 
+    /** XML文字列を DOM Document にパースする */
+    private Document parseDocument(String xml) throws Exception {
+        return DOC_BUILDER_FACTORY.newDocumentBuilder()
+                .parse(new ByteArrayInputStream(xml.getBytes(StandardCharsets.UTF_8)));
+    }
+
     /**
      * NDL API が返すXMLを解析し、「図書」に該当するアイテムのみを BookResponse リストに変換する。
      * ネームスペースを意識した getElementsByTagNameNS で要素を取得する。
      */
-    private List<BookResponse> parseItems(String xml) {
+    private List<BookResponse> parseItems(Document doc) {
         try {
-            DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
-            factory.setNamespaceAware(true);
-            DocumentBuilder documentBuilder = factory.newDocumentBuilder();
-            Document doc = documentBuilder.parse(
-                    new ByteArrayInputStream(xml.getBytes(StandardCharsets.UTF_8)));
-
             NodeList items = doc.getElementsByTagName("item");
             if (items.getLength() == 0) return List.of();
 
@@ -163,17 +173,9 @@ public class BookService {
         }
     }
 
-    /**
-     * NDL APIレスポンスXMLから総件数（opensearch:totalResults）を取得する。
-     * 取得できない場合は0を返す。
-     */
-    private int parseTotalResults(String xml) {
+    /** XMLレスポンスから総件数（opensearch:totalResults）を取得する。取得できない場合は0を返す。 */
+    private int parseTotalResults(Document doc) {
         try {
-            DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
-            factory.setNamespaceAware(true);
-            DocumentBuilder builder = factory.newDocumentBuilder();
-            Document doc = builder.parse(new ByteArrayInputStream(xml.getBytes(StandardCharsets.UTF_8)));
-            // ネームスペースを問わず totalResults 要素を取得する
             NodeList nodes = doc.getElementsByTagNameNS("*", "totalResults");
             if (nodes.getLength() > 0) {
                 return Integer.parseInt(nodes.item(0).getTextContent().trim());
@@ -182,20 +184,9 @@ public class BookService {
         return 0;
     }
 
-    /**
-     * XMLレスポンスに含まれる item 要素の総数を返す（フィルタ前）。
-     * isBook フィルタによる除外件数を計算するために使用する。
-     */
-    private int countItems(String xml) {
-        try {
-            DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
-            factory.setNamespaceAware(true);
-            Document doc = factory.newDocumentBuilder()
-                    .parse(new ByteArrayInputStream(xml.getBytes(StandardCharsets.UTF_8)));
-            return doc.getElementsByTagName("item").getLength();
-        } catch (Exception ignored) {
-            return 0;
-        }
+    /** XMLレスポンスに含まれる item 要素の総数を返す（フィルタ前）。 */
+    private int countItems(Document doc) {
+        return doc.getElementsByTagName("item").getLength();
     }
 
     /**
@@ -263,7 +254,7 @@ public class BookService {
         List<String> withRole = Arrays.stream(raw.split(","))
                 .map(String::trim)
                 .filter(s -> s.matches(".*(著|訳|編|監修|監訳).*"))
-                .collect(Collectors.toList());
+                .toList();
 
         return withRole.isEmpty() ? raw : String.join("・", withRole);
     }

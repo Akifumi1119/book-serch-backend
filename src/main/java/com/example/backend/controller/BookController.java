@@ -1,5 +1,7 @@
 package com.example.backend.controller;
 
+import java.util.Arrays;
+
 import com.example.backend.dto.BookResponse;
 import com.example.backend.dto.BookSearchResponse;
 import com.example.backend.service.BookService;
@@ -68,11 +70,7 @@ public class BookController {
         }
     }
 
-    /** 全ての文字列がnullまたは空白かどうかを判定する */
     private boolean allBlank(String... values) {
-        for (String v : values) {
-            if (v != null && !v.isBlank()) return false;
-        }
-        return true;
+        return Arrays.stream(values).allMatch(v -> v == null || v.isBlank());
     }
 }
