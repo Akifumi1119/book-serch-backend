@@ -1,7 +1,10 @@
 package com.example.backend.service;
 
+import com.example.backend.dto.BookDetailResponse;
 import com.example.backend.dto.BookResponse;
 import com.example.backend.dto.BookSearchResponse;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
@@ -9,7 +12,6 @@ import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 import org.w3c.dom.NodeList;
 
-import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
@@ -20,11 +22,13 @@ import java.util.Optional;
 
 /**
  * NDL API は Atom/RSS 形式の XML を返すため、DOM パーサーで各要素を抽出する
+ * 書籍詳細は openBD API（https://api.openbd.jp/v1/get）を使用する
  */
 @Service
 public class BookService {
 
     private static final String NDL_API_BASE = "https://ndlsearch.ndl.go.jp/api/opensearch";
+    private static final String OPENBD_API_BASE = "https://api.openbd.jp/v1";
 
     private static final DocumentBuilderFactory DOC_BUILDER_FACTORY;
     static {
@@ -33,6 +37,8 @@ public class BookService {
     }
 
     private final RestClient restClient;
+    private final RestClient openBdClient;
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     public BookService() {
         // Renderサーバーから国内NDL APIへの遅延を考慮して長めに設定（接続15秒、読み取り30秒）
@@ -42,6 +48,11 @@ public class BookService {
 
         this.restClient = RestClient.builder()
                 .baseUrl(NDL_API_BASE)
+                .requestFactory(factory)
+                .build();
+
+        this.openBdClient = RestClient.builder()
+                .baseUrl(OPENBD_API_BASE)
                 .requestFactory(factory)
                 .build();
     }
@@ -119,6 +130,61 @@ public class BookService {
                 .page(page)
                 .size(size)
                 .build();
+    }
+
+    /**
+     * ISBNで書籍の詳細情報を取得する（openBD API 使用）
+     * 表紙画像URL・シリーズ名・説明文などを含む詳細情報を返す
+     * 見つからない場合は Optional.empty() を返す
+     */
+    public Optional<BookDetailResponse> findDetailByIsbn(String isbn) {
+        try {
+            String json = openBdClient.get()
+                    .uri(uri -> uri.path("/get").queryParam("isbn", isbn).build())
+                    .retrieve()
+                    .body(String.class);
+
+            if (json == null || json.isBlank()) return Optional.empty();
+
+            JsonNode root = objectMapper.readTree(json);
+            if (!root.isArray() || root.isEmpty() || root.get(0).isNull()) {
+                return Optional.empty();
+            }
+
+            JsonNode book = root.get(0);
+            JsonNode summary = book.get("summary");
+            if (summary == null) return Optional.empty();
+
+            String description = extractDescription(book);
+
+            return Optional.of(BookDetailResponse.builder()
+                    .isbn(summary.path("isbn").asText(""))
+                    .title(summary.path("title").asText(""))
+                    .author(summary.path("author").asText(""))
+                    .publisher(summary.path("publisher").asText(""))
+                    .publishedDate(summary.path("pubdate").asText(""))
+                    .series(summary.path("series").asText(""))
+                    .cover(summary.path("cover").asText(""))
+                    .description(description)
+                    .build());
+        } catch (Exception e) {
+            return Optional.empty();
+        }
+    }
+
+    /** openBD レスポンスの onix から TextType=03（内容紹介）のテキストを抽出する */
+    private String extractDescription(JsonNode book) {
+        try {
+            JsonNode textContents = book.path("onix").path("CollateralDetail").path("TextContent");
+            if (textContents.isArray()) {
+                for (JsonNode tc : textContents) {
+                    if ("03".equals(tc.path("TextType").asText())) {
+                        return tc.path("Text").asText("");
+                    }
+                }
+            }
+        } catch (Exception ignored) {}
+        return "";
     }
 
     /** NDL API 呼び出し失敗を表す例外 */

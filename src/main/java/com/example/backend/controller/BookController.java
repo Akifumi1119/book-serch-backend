@@ -2,6 +2,7 @@ package com.example.backend.controller;
 
 import java.util.Arrays;
 
+import com.example.backend.dto.BookDetailResponse;
 import com.example.backend.dto.BookResponse;
 import com.example.backend.dto.BookSearchResponse;
 import com.example.backend.service.BookService;
@@ -34,6 +35,18 @@ public class BookController {
     @GetMapping("/isbn/{isbn}")
     public ResponseEntity<BookResponse> findByIsbn(@PathVariable String isbn) {
         return bookService.findByIsbn(isbn)
+                .map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
+    }
+
+    /**
+     * ISBNで書籍の詳細情報を取得（openBD API 経由）
+     * 表紙画像・シリーズ名・説明文などを含む詳細情報を返す
+     * 見つからない場合は 404 Not Found を返す
+     */
+    @GetMapping("/detail")
+    public ResponseEntity<BookDetailResponse> findDetail(@RequestParam String isbn) {
+        return bookService.findDetailByIsbn(isbn)
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
     }
