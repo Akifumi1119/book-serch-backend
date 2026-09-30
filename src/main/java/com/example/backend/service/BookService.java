@@ -165,7 +165,6 @@ public class BookService {
                     .publisher(summary.path("publisher").asText(""))
                     .publishedDate(summary.path("pubdate").asText(""))
                     .series(summary.path("series").asText(""))
-                    .cover(summary.path("cover").asText(""))
                     .description(description)
                     .link(link)
                     .build());

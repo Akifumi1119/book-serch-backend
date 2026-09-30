@@ -10,7 +10,6 @@ public record BookDetailResponse(
         String publisher,
         String publishedDate,
         String series,
-        String cover,
         String description,
         String link
 ) {}
