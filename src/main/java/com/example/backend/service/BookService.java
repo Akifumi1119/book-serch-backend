@@ -324,7 +324,9 @@ public class BookService {
                 .filter(s -> s.matches(".*(著|訳|編|監修|監訳).*"))
                 .toList();
 
-        return withRole.isEmpty() ? raw : String.join("・", withRole);
+        if (withRole.isEmpty()) return raw;
+        if (withRole.size() == 1) return withRole.get(0).replaceAll("／.*", "").trim();
+        return String.join("・", withRole);
     }
 
     /**
