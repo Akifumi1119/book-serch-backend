@@ -161,7 +161,7 @@ public class BookService {
             return Optional.of(BookDetailResponse.builder()
                     .isbn(summary.path("isbn").asText(""))
                     .title(summary.path("title").asText(""))
-                    .author(summary.path("author").asText(""))
+                    .author(formatAuthor(summary.path("author").asText("")))
                     .publisher(summary.path("publisher").asText(""))
                     .publishedDate(summary.path("pubdate").asText(""))
                     .series(summary.path("series").asText(""))
@@ -316,7 +316,10 @@ public class BookService {
      * 「・」で結合する。役割語が一つもない場合は生の文字列をそのまま返す。
      */
     private String buildAuthor(Element item) {
-        String raw = getLocalText(item, "author");
+        return formatAuthor(getLocalText(item, "author"));
+    }
+
+    private String formatAuthor(String raw) {
         if (raw.isEmpty()) return "";
 
         List<String> withRole = Arrays.stream(raw.split(","))
@@ -325,8 +328,8 @@ public class BookService {
                 .toList();
 
         if (withRole.isEmpty()) return raw;
-        if (withRole.size() == 1) return withRole.get(0).replaceAll("／.*", "").trim();
-        return String.join("・", withRole);
+        if (withRole.size() == 1) return withRole.get(0).replace("／", " ").trim();
+        return String.join("・", withRole.stream().map(s -> s.replace("／", " ")).toList());
     }
 
     /**
