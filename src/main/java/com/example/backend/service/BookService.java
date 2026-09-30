@@ -156,6 +156,7 @@ public class BookService {
             if (summary == null) return Optional.empty();
 
             String description = extractDescription(book);
+            String link = findByIsbn(isbn).map(BookResponse::link).orElse("");
 
             return Optional.of(BookDetailResponse.builder()
                     .isbn(summary.path("isbn").asText(""))
@@ -166,6 +167,7 @@ public class BookService {
                     .series(summary.path("series").asText(""))
                     .cover(summary.path("cover").asText(""))
                     .description(description)
+                    .link(link)
                     .build());
         } catch (Exception e) {
             return Optional.empty();
